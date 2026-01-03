@@ -5,7 +5,7 @@ import re
 st.set_page_config(page_title="Campaña T3F", layout="wide")
 
 st.title("📍 Buscador de Vecinos - Tres de Febrero")
-st.markdown("Herramienta para logística territorial. Sube el Padrón PJ y busca afiliados cercanos.")
+st.markdown("Herramienta para logística territorial. Sube el Padrón PJ (Excel o CSV) y busca afiliados cercanos.")
 
 # Función para limpiar la dirección
 def limpiar_direccion(texto):
@@ -18,25 +18,30 @@ def limpiar_direccion(texto):
         return match.group(1).strip(), int(match.group(2))
     return None, None
 
-# Paso 1: Cargar Archivo
-uploaded_file = st.file_uploader("📂 Sube aquí tu archivo CSV (Padron PJ)", type=["csv"])
+# Paso 1: Cargar Archivo (AHORA ACEPTA EXCEL Y CSV)
+uploaded_file = st.file_uploader("📂 Sube aquí tu archivo (Excel .xlsx o CSV)", type=["csv", "xlsx"])
 
 if uploaded_file is not None:
     try:
-        # Leemos el archivo
-        df = pd.read_csv(uploaded_file, encoding='latin-1')
+        # Detectar el tipo de archivo y leerlo
+        if uploaded_file.name.endswith('.csv'):
+            df = pd.read_csv(uploaded_file, encoding='latin-1')
+        else:
+            # Es un Excel
+            df = pd.read_excel(uploaded_file)
         
-        # Verificamos si tiene las columnas necesarias
+        # Verificamos si tiene la columna Domicilio
         if 'Domicilio' in df.columns:
             st.success(f"✅ Archivo cargado correctamente. {len(df)} afiliados en la lista.")
             
             # Procesamos las direcciones (solo se hace una vez)
             if 'Calle_Limpia' not in df.columns:
-                datos_limpios = df['Domicilio'].apply(lambda x: pd.Series(limpiar_direccion(x)))
-                df['Calle_Limpia'] = datos_limpios[0]
-                df['Altura_Limpia'] = datos_limpios[1]
-                # Quitamos los que no tienen dirección leíble
-                df = df.dropna(subset=['Calle_Limpia', 'Altura_Limpia'])
+                with st.spinner('Procesando direcciones, por favor espera...'):
+                    datos_limpios = df['Domicilio'].apply(lambda x: pd.Series(limpiar_direccion(x)))
+                    df['Calle_Limpia'] = datos_limpios[0]
+                    df['Altura_Limpia'] = datos_limpios[1]
+                    # Quitamos los que no tienen dirección leíble
+                    df = df.dropna(subset=['Calle_Limpia', 'Altura_Limpia'])
 
             st.divider()
             
@@ -81,7 +86,7 @@ if uploaded_file is not None:
                 else:
                     st.warning("No se encontraron resultados.")
         else:
-            st.error("El archivo no tiene la columna 'Domicilio'. Verifica el CSV.")
+            st.error("El archivo no tiene la columna 'Domicilio'. Verifica el Excel.")
             
     except Exception as e:
         st.error(f"Error leyendo el archivo: {e}")
