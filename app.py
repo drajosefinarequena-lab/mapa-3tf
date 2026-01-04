@@ -6,87 +6,172 @@ import re
 st.set_page_config(page_title="Campaña T3F", layout="wide")
 
 st.title("📍 Buscador de Vecinos - Tres de Febrero")
-st.markdown("Herramienta de logística territorial. Base de datos integrada.")
+st.markdown("Herramienta de logística territorial. (Modo: Coincidencia Flexible)")
 
-# --- FUNCIÓN DE CARGA ---
+# --- 1. FUNCIÓN DE CARGA ---
 @st.cache_data
 def cargar_datos():
-    # AHORA BUSCAMOS EL NOMBRE SIMPLE
-    nombre_archivo = "datos.csv"
-    
+    nombre_archivo = "datos.csv" # El nombre corto que pusimos antes
     try:
-        # Intentamos leer como CSV estándar
         df = pd.read_csv(nombre_archivo, encoding='latin-1', sep=',')
-        
-        # Si falló la separación, probamos con punto y coma
         if df.shape[1] < 2:
              df = pd.read_csv(nombre_archivo, encoding='latin-1', sep=';')
-             
         return df
     except FileNotFoundError:
         return None
 
-# --- FUNCIÓN LIMPIEZA ---
+# --- 2. NUEVA FUNCIÓN: NORMALIZAR CALLES ---
+# Esta función elimina "ruido" para que AV. SAN MARTIN sea igual a SAN MARTIN
+def normalizar_calle(texto_calle):
+    if not isinstance(texto_calle, str):
+        return ""
+    
+    # Pasamos a mayúsculas
+    calle = texto_calle.upper().strip()
+    
+   # Lista de palabras a eliminar (prefijos comunes en calles de Argentina)
+    palabras_basura = [
+        "AV.", "AV ", "AVENIDA ", 
+        "CALLE ", 
+        "PJE.", "PJE ", "PASAJE ", 
+        "GRL.", "GRL ", "GRAL ", "GRAL. ", "GENERAL ", 
+        "DR.", "DR ", "DOC ", "DOCTOR ",
+        "ING.", "ING ", "INGENIERO ",
+        "ARQ.", "ARQ ", "ARQUITECTO ",
+        "PROF.", "PROF ", "PROFESOR ",
+        "CNEL.", "CNEL ", "CORONEL ",
+        "TTE.", "TTE ", "TENIENTE ",
+        "SGTO.", "SGTO ", "SARGENTO ",
+        "CAP.", "CAP ", "CAPITAN ",
+        "MJOR.", "MJOR ", "MAYOR ",
+        "CMTE.", "CMTE ", "COMANDANTE ",
+        "ALTE.", "ALTE ", "ALMIRANTE ",
+        "MONS.", "MONS ", "MONSEÑOR ",
+        "PBRO.", "PBRO ", "PRESBITERO ",
+        "INT.", "INT ", "INTENDENTE "
+    
+    
+    for palabra in palabras_basura:
+        if calle.startswith(palabra):
+            calle = calle.replace(palabra, "")
+            
+    return calle.strip()
+
+# --- 3. FUNCIÓN DE EXTRACCIÓN ---
 def limpiar_direccion(texto):
     if not isinstance(texto, str):
-        return None, None
+        return None, None, None
     texto = texto.upper().strip()
-    match = re.search(r"^([A-Z\s\.]+?)\s+(\d+)", texto)
+    
+    # Regex ajustado: Busca letras, luego números
+    match = re.search(r"^([A-Z\s\.\d]+?)\s+(\d+)", texto)
     if match:
-        return match.group(1).strip(), int(match.group(2))
-    return None, None
+        calle_raw = match.group(1).strip()
+        altura = int(match.group(2))
+        calle_norm = normalizar_calle(calle_raw) # Generamos la versión limpia
+        return calle_raw, altura, calle_norm
+    return None, None, None
 
-# --- APP ---
-with st.spinner('Cargando padrón...'):
+# --- INICIO DE LA APP ---
+with st.spinner('Procesando datos con lógica flexible...'):
     df = cargar_datos()
 
 if df is not None:
     if 'Domicilio' in df.columns:
         
-        if 'Calle_Limpia' not in df.columns:
+        # Procesamos las direcciones (AHORA CREAMOS 3 COLUMNAS)
+        if 'Calle_Norm' not in df.columns:
+            # Aplicamos la limpieza y expandimos el resultado en 3 columnas
             datos_limpios = df['Domicilio'].apply(lambda x: pd.Series(limpiar_direccion(x)))
-            df['Calle_Limpia'] = datos_limpios[0]
+            df['Calle_Original'] = datos_limpios[0]
             df['Altura_Limpia'] = datos_limpios[1]
-            df = df.dropna(subset=['Calle_Limpia', 'Altura_Limpia'])
-
-        st.success(f"✅ Base cargada: {len(df)} afiliados.")
-        st.divider()
-        
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            busqueda = st.text_input("🔍 Buscar (Apellido o DNI):", placeholder="Ej: PEREZ")
-
-        if busqueda:
-            filtro = df[df['Apellido'].str.contains(busqueda.upper(), na=False) | 
-                       df['Matricula'].astype(str).str.contains(busqueda, na=False)]
+            df['Calle_Norm'] = datos_limpios[2] # Esta es la calle "sin prefijos"
             
-            if not filtro.empty:
-                opciones = {f"{row['Apellido']} {row['Nombre']} - {row['Calle_Limpia']} {int(row['Altura_Limpia'])}": i for i, row in filtro.iterrows()}
-                seleccion = st.selectbox("Resultados:", list(opciones.keys()))
+            # Filtramos nulos
+            df = df.dropna(subset=['Calle_Norm', 'Altura_Limpia'])
+
+        st.success(f"✅ Base lista: {len(df)} afiliados.")
+        st.divider()
+
+        # --- SELECTOR DE MODO ---
+        modo_busqueda = st.radio("Modo:", ["👤 Buscar Persona", "🏠 Buscar Calle"], horizontal=True)
+        st.divider()
+
+        # ==========================================
+        # MODO 1: BUSCAR PERSONA
+        # ==========================================
+        if "Persona" in modo_busqueda:
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                busqueda = st.text_input("🔍 Apellido o DNI:", placeholder="Ej: ERNANDES")
+
+            if busqueda:
+                filtro = df[df['Apellido'].str.contains(busqueda.upper(), na=False) | 
+                           df['Matricula'].astype(str).str.contains(busqueda, na=False)]
                 
-                if seleccion:
-                    idx = opciones[seleccion]
-                    objetivo = df.loc[idx]
+                if not filtro.empty:
+                    # Selector
+                    opciones = {f"{row['Apellido']} {row['Nombre']} - {row['Calle_Original']} {int(row['Altura_Limpia'])}": i for i, row in filtro.iterrows()}
+                    seleccion = st.selectbox("Resultados:", list(opciones.keys()))
                     
-                    st.info(f"📌 CENTRO: {objetivo['Apellido']} {objetivo['Nombre']} | {objetivo['Calle_Limpia']} {int(objetivo['Altura_Limpia'])}")
-                    
-                    rango = st.slider("Radio (numeración):", 100, 800, 400)
-                    
-                    vecinos = df[
-                        (df['Calle_Limpia'] == objetivo['Calle_Limpia']) &
-                        (df['Altura_Limpia'] >= objetivo['Altura_Limpia'] - rango) &
-                        (df['Altura_Limpia'] <= objetivo['Altura_Limpia'] + rango) &
-                        (df['Matricula'] != objetivo['Matricula'])
-                    ].copy()
-                    
-                    vecinos['Distancia'] = abs(vecinos['Altura_Limpia'] - objetivo['Altura_Limpia'])
-                    vecinos = vecinos.sort_values('Distancia')
-                    
-                    st.write(f"**Vecinos encontrados en la misma calle:** {len(vecinos)}")
-                    st.dataframe(vecinos[['Apellido', 'Nombre', 'Domicilio', 'Distancia']], use_container_width=True)
-            else:
-                st.warning("No encontrado.")
+                    if seleccion:
+                        idx = opciones[seleccion]
+                        objetivo = df.loc[idx]
+                        
+                        st.info(f"📌 **CENTRO:** {objetivo['Apellido']} {objetivo['Nombre']} | {objetivo['Calle_Original']} {int(objetivo['Altura_Limpia']}")
+                        
+                        rango = st.slider("Radio (numeración):", 100, 1000, 500)
+                        
+                        # --- FILTRO MEJORADO (COMPARAMOS CALLE_NORM) ---
+                        # Buscamos coincidencias en la versión normalizada de la calle
+                        vecinos = df[
+                            (df['Calle_Norm'] == objetivo['Calle_Norm']) & 
+                            (df['Altura_Limpia'] >= objetivo['Altura_Limpia'] - rango) &
+                            (df['Altura_Limpia'] <= objetivo['Altura_Limpia'] + rango) &
+                            (df['Matricula'] != objetivo['Matricula'])
+                        ].copy()
+                        
+                        vecinos['Distancia'] = abs(vecinos['Altura_Limpia'] - objetivo['Altura_Limpia'])
+                        vecinos = vecinos.sort_values('Distancia')
+                        
+                        st.write(f"**Vecinos en la misma calle (Coincidencia Flexible):** {len(vecinos)}")
+                        st.dataframe(vecinos[['Apellido', 'Nombre', 'Domicilio', 'Distancia']], use_container_width=True)
+                else:
+                    st.warning("No encontrado.")
+
+        # ==========================================
+        # MODO 2: BUSCAR DIRECCIÓN
+        # ==========================================
+        else:
+            col1, col2 = st.columns(2)
+            with col1:
+                # Mostramos las calles ORIGINALES para que sea legible, pero internamente buscaremos por la normalizada
+                calle_input = st.selectbox("Calle:", sorted(df['Calle_Original'].unique()))
+            with col2:
+                altura_input = st.number_input("Altura (Opcional):", min_value=0, step=100)
+            
+            if calle_input:
+                # 1. Obtenemos la versión normalizada de la calle seleccionada
+                calle_norm_seleccionada = df[df['Calle_Original'] == calle_input]['Calle_Norm'].iloc[0]
+                
+                # 2. Buscamos TODOS los que tengan esa calle normalizada (agrupamos Av San Martin y San Martin)
+                filtro_calle = df[df['Calle_Norm'] == calle_norm_seleccionada].copy()
+                
+                if altura_input > 0:
+                    rango = st.slider("Radio:", 100, 1000, 500)
+                    filtro_calle = filtro_calle[
+                        (filtro_calle['Altura_Limpia'] >= altura_input - rango) &
+                        (filtro_calle['Altura_Limpia'] <= altura_input + rango)
+                    ]
+                    filtro_calle['Diferencia'] = abs(filtro_calle['Altura_Limpia'] - altura_input)
+                    filtro_calle = filtro_calle.sort_values('Diferencia')
+                else:
+                    filtro_calle = filtro_calle.sort_values('Altura_Limpia')
+
+                st.success(f"🏘️ Encontrados: {len(filtro_calle)} (Incluye variantes como Av., Calle, etc.)")
+                st.dataframe(filtro_calle[['Apellido', 'Nombre', 'Domicilio', 'Altura_Limpia']], use_container_width=True)
+
     else:
-        st.error("Error: El archivo datos.csv no tiene columna 'Domicilio'.")
+        st.error("Error: Columna 'Domicilio' no encontrada.")
 else:
-    st.error("⚠️ ERROR: No encuentro el archivo 'datos.csv'. Asegúrate de haberlo subido a GitHub con ese nombre exacto (todo minúscula).")
+    st.error("⚠️ Archivo no encontrado en GitHub.")
