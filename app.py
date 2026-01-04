@@ -1,20 +1,3 @@
-¡No te preocupes! Ese error aparece porque al copiar y pegar se perdió un corchete [ o una coma, y la computadora no sabe dónde empieza o termina la lista de palabras.
-
-Para solucionarlo rápido y sin buscar el error línea por línea, lo mejor es copiar el archivo completo de nuevo.
-
-Aquí tienes la versión definitiva de app.py, con la lista de "palabras basura" completa y corregida (incluye Dr, Gral, Cnel, etc.) y sin errores de sintaxis.
-
-Pasos:
-Ve a app.py en GitHub.
-
-Dale al lápiz ✏️.
-
-Borra TODO lo que hay.
-
-Pega este código entero:
-
-Python
-
 import streamlit as st
 import pandas as pd
 import re
@@ -181,4 +164,3 @@ if df is not None:
     else:
         st.error("Error: Columna 'Domicilio' no encontrada.")
 else:
-    st.error("⚠️ Archivo no encontrado en GitHub.")
