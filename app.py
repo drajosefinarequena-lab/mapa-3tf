@@ -245,37 +245,31 @@ if df is not None:
 
     else:
         st.divider()
-st.header("🕵️ Zona de Auditoría (Detective de Errores)")
-st.markdown("Esta herramienta busca calles que se escriben parecido pero el sistema cree que son distintas.")
+st.header("🕵️ Zona de Auditoría y Generación de Correcciones")
 
-if st.checkbox("Activar Detective de Calles"):
-    with st.spinner('El detective está comparando miles de nombres... esto toma unos segundos.'):
+if st.checkbox("Activar Detective y Generar Archivo de Limpieza"):
+    with st.spinner('Analizando y generando sugerencias automáticas...'):
         
-        # 1. Función de limpieza temporal para comparar
+        # 1. Función limpieza interna
         def limpiar_para_comparar(texto):
             if not isinstance(texto, str): return ""
             t = texto.upper().strip()
-            # Quitamos prefijos comunes para comparar solo la palabra clave
             for p in ["AV.", "AV ", "CALLE ", "DR.", "DR ", "GRAL.", "GRAL ", "PJE ", "PJE."]:
                 t = t.replace(p, "")
             return t.strip()
 
-        # 2. Preparamos los datos
-        # Usamos 'Calle_Original' porque queremos ver los errores originales del Excel
+        # 2. Análisis
         if 'Calle_Original' in df.columns:
             calles_unicas = sorted([c for c in df['Calle_Original'].unique() if isinstance(c, str) and len(c) > 3])
             
-            sospechosos = []
+            sugerencias = [] # Aquí guardaremos pares [Mal, Bien]
             procesados = set()
             
-            # 3. Comparamos todas contra todas (Lógica Fuzzy)
             progress_bar = st.progress(0)
             total = len(calles_unicas)
             
             for i, calle_a in enumerate(calles_unicas):
-                # Actualizamos barra cada 50 items para no trabar la app
                 if i % 50 == 0: progress_bar.progress(i / total)
-                
                 if calle_a in procesados: continue
                 
                 nombre_a = limpiar_para_comparar(calle_a)
@@ -283,34 +277,39 @@ if st.checkbox("Activar Detective de Calles"):
                 
                 for calle_b in calles_unicas:
                     if calle_a == calle_b or calle_b in procesados: continue
-                    
                     nombre_b = limpiar_para_comparar(calle_b)
                     
-                    # MAGIA: Calculamos qué tan parecidas son (0 a 1)
+                    # Similitud > 85%
                     ratio = SequenceMatcher(None, nombre_a, nombre_b).ratio()
-                    
-                    # Si son más del 85% parecidas
                     if ratio > 0.85:
                         grupo.append(calle_b)
                         procesados.add(calle_b)
                 
                 if len(grupo) > 1:
-                    sospechosos.append(grupo)
                     procesados.add(calle_a)
+                    # La primera de la lista será la "Oficial" (luego tú lo revisas en Excel)
+                    oficial = grupo[0]
+                    for variante in grupo[1:]:
+                        # Guardamos: [Nombre Malo, Nombre Sugerido]
+                        sugerencias.append({"Original": variante, "Corregido": oficial})
             
             progress_bar.empty()
             
-            # 4. Mostrar Resultados
-            st.warning(f"⚠️ Se encontraron {len(sospechosos)} grupos de calles sospechosas.")
+            # 3. Mostrar y Descargar
+            st.warning(f"⚠️ Se encontraron {len(sugerencias)} correcciones posibles.")
             
-            for grupo in sospechosos:
-                with st.expander(f"🔎 Grupo: {grupo[0]} ({len(grupo)} variantes)"):
-                    st.write("Variantes encontradas:")
-                    st.code("\n".join(grupo))
-                    st.info(f"💡 Sugerencia para el diccionario:\n" + 
-                            "\n".join([f'"{v}": "{grupo[0]}",' for v in grupo[1:]]))
+            df_sugerencias = pd.DataFrame(sugerencias)
+            st.dataframe(df_sugerencias.head())
+            
+            csv_sugerencias = df_sugerencias.to_csv(index=False).encode('utf-8')
+            
+            st.download_button(
+                label="⬇️ Descargar Archivo de Correcciones (correcciones.csv)",
+                data=csv_sugerencias,
+                file_name="correcciones.csv",
+                mime="text/csv"
+            )
+            st.info("Paso siguiente: Descarga este archivo, revísalo en Excel, borra lo que esté mal y súbelo a GitHub.")
+
         else:
             st.error("No se pudo cargar la columna de calles originales.")
-        st.error("Error: Columna 'Domicilio' no encontrada.")
-else:
-    st.error("⚠️ Archivo no encontrado. Verifica que 'datos.csv' esté en GitHub.")
