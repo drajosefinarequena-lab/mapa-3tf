@@ -1,3 +1,24 @@
+Aquí tienes el CÓDIGO DEFINITIVO Y COMPLETO para tu archivo app.py.
+
+Este código incluye:
+
+El "Diccionario Maestro" (V3.0): Corrige Beruti, Cafferata, Fechas (12 de Octubre, 3 de Febrero), San Martín (distingue Av. de Boulevard), Yrigoyen, Pellegrini, y más.
+
+Limpiador de Iniciales: Borra automáticamente "A.", "C.", "J.", etc., para casos que no estén en el diccionario.
+
+Botón de Descarga: Para que puedas bajar tu padrón ya limpio y unificado.
+
+Pasos para actualizar:
+Ve a tu GitHub.
+
+Entra en app.py.
+
+Dale al lápiz ✏️.
+
+Borra TODO y pega este bloque exacto:
+
+Python
+
 import streamlit as st
 import pandas as pd
 import re
