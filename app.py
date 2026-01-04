@@ -20,7 +20,7 @@ def cargar_datos():
     except FileNotFoundError:
         return None
 
-# --- 2. FUNCIÓN DE NORMALIZACIÓN DE CALLES ---
+# --- 2. FUNCIÓN DE NORMALIZACIÓN ---
 def normalizar_calle(texto_calle):
     if not isinstance(texto_calle, str):
         return ""
@@ -28,8 +28,7 @@ def normalizar_calle(texto_calle):
     # Pasamos a mayúsculas
     calle = texto_calle.upper().strip()
     
-    # LISTA COMPLETA DE PREFIJOS A ELIMINAR
-    # Eliminamos rangos y títulos para que "DR DE LA ROSA" sea igual a "DE LA ROSA"
+    # LISTA DE PREFIJOS A ELIMINAR
     palabras_basura = [
         "AV.", "AV ", "AVENIDA ", 
         "CALLE ", 
@@ -68,7 +67,7 @@ def limpiar_direccion(texto):
     if match:
         calle_raw = match.group(1).strip()
         altura = int(match.group(2))
-        calle_norm = normalizar_calle(calle_raw) # Generamos la versión limpia
+        calle_norm = normalizar_calle(calle_raw) 
         return calle_raw, altura, calle_norm
     return None, None, None
 
@@ -106,6 +105,7 @@ if df is not None:
                            df['Matricula'].astype(str).str.contains(busqueda, na=False)]
                 
                 if not filtro.empty:
+                    # Selector
                     opciones = {f"{row['Apellido']} {row['Nombre']} - {row['Calle_Original']} {int(row['Altura_Limpia'])}": i for i, row in filtro.iterrows()}
                     seleccion = st.selectbox("Resultados:", list(opciones.keys()))
                     
@@ -164,3 +164,4 @@ if df is not None:
     else:
         st.error("Error: Columna 'Domicilio' no encontrada.")
 else:
+    st.error("⚠️ Archivo no encontrado en GitHub.")
