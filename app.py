@@ -1,3 +1,4 @@
+from difflib import SequenceMatcher
 import streamlit as st
 import pandas as pd
 import re
@@ -243,6 +244,73 @@ if df is not None:
                 st.dataframe(filtro_calle[['Apellido', 'Nombre', 'Domicilio', 'Altura_Limpia']], use_container_width=True)
 
     else:
+        st.divider()
+st.header("🕵️ Zona de Auditoría (Detective de Errores)")
+st.markdown("Esta herramienta busca calles que se escriben parecido pero el sistema cree que son distintas.")
+
+if st.checkbox("Activar Detective de Calles"):
+    with st.spinner('El detective está comparando miles de nombres... esto toma unos segundos.'):
+        
+        # 1. Función de limpieza temporal para comparar
+        def limpiar_para_comparar(texto):
+            if not isinstance(texto, str): return ""
+            t = texto.upper().strip()
+            # Quitamos prefijos comunes para comparar solo la palabra clave
+            for p in ["AV.", "AV ", "CALLE ", "DR.", "DR ", "GRAL.", "GRAL ", "PJE ", "PJE."]:
+                t = t.replace(p, "")
+            return t.strip()
+
+        # 2. Preparamos los datos
+        # Usamos 'Calle_Original' porque queremos ver los errores originales del Excel
+        if 'Calle_Original' in df.columns:
+            calles_unicas = sorted([c for c in df['Calle_Original'].unique() if isinstance(c, str) and len(c) > 3])
+            
+            sospechosos = []
+            procesados = set()
+            
+            # 3. Comparamos todas contra todas (Lógica Fuzzy)
+            progress_bar = st.progress(0)
+            total = len(calles_unicas)
+            
+            for i, calle_a in enumerate(calles_unicas):
+                # Actualizamos barra cada 50 items para no trabar la app
+                if i % 50 == 0: progress_bar.progress(i / total)
+                
+                if calle_a in procesados: continue
+                
+                nombre_a = limpiar_para_comparar(calle_a)
+                grupo = [calle_a]
+                
+                for calle_b in calles_unicas:
+                    if calle_a == calle_b or calle_b in procesados: continue
+                    
+                    nombre_b = limpiar_para_comparar(calle_b)
+                    
+                    # MAGIA: Calculamos qué tan parecidas son (0 a 1)
+                    ratio = SequenceMatcher(None, nombre_a, nombre_b).ratio()
+                    
+                    # Si son más del 85% parecidas
+                    if ratio > 0.85:
+                        grupo.append(calle_b)
+                        procesados.add(calle_b)
+                
+                if len(grupo) > 1:
+                    sospechosos.append(grupo)
+                    procesados.add(calle_a)
+            
+            progress_bar.empty()
+            
+            # 4. Mostrar Resultados
+            st.warning(f"⚠️ Se encontraron {len(sospechosos)} grupos de calles sospechosas.")
+            
+            for grupo in sospechosos:
+                with st.expander(f"🔎 Grupo: {grupo[0]} ({len(grupo)} variantes)"):
+                    st.write("Variantes encontradas:")
+                    st.code("\n".join(grupo))
+                    st.info(f"💡 Sugerencia para el diccionario:\n" + 
+                            "\n".join([f'"{v}": "{grupo[0]}",' for v in grupo[1:]]))
+        else:
+            st.error("No se pudo cargar la columna de calles originales.")
         st.error("Error: Columna 'Domicilio' no encontrada.")
 else:
     st.error("⚠️ Archivo no encontrado. Verifica que 'datos.csv' esté en GitHub.")
