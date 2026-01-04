@@ -245,8 +245,4 @@ if df is not None:
     else:
         st.error("Error: Columna 'Domicilio' no encontrada.")
 else:
-    st.error("⚠️ Archivo no encontrado. Verifica que 'datos.csv' esté en GitHub.
-             else:
-        st.error("Error: Columna 'Domicilio' no encontrada.")
-else:
     st.error("⚠️ Archivo no encontrado. Verifica que 'datos.csv' esté en GitHub.")
