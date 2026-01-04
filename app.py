@@ -6,29 +6,101 @@ import re
 st.set_page_config(page_title="Campaña T3F", layout="wide")
 
 st.title("📍 Buscador de Vecinos - Tres de Febrero")
-st.markdown("Herramienta de logística territorial. (Modo: Coincidencia Flexible)")
+st.markdown("Herramienta de logística territorial. (Base Normalizada y Unificada)")
 
 # --- 1. FUNCIÓN DE CARGA ---
 @st.cache_data
 def cargar_datos():
     nombre_archivo = "datos.csv" 
     try:
+        # Intentamos leer con coma
         df = pd.read_csv(nombre_archivo, encoding='latin-1', sep=',')
+        # Si falla, probamos punto y coma
         if df.shape[1] < 2:
              df = pd.read_csv(nombre_archivo, encoding='latin-1', sep=';')
         return df
     except FileNotFoundError:
         return None
 
-# --- 2. FUNCIÓN DE NORMALIZACIÓN ---
+# --- 2. FUNCIÓN MAESTRA DE NORMALIZACIÓN ---
 def normalizar_calle(texto_calle):
     if not isinstance(texto_calle, str):
         return ""
     
-    # Pasamos a mayúsculas
+    # Limpieza básica
     calle = texto_calle.upper().strip()
     
-    # LISTA DE PREFIJOS A ELIMINAR
+    # A. DICCIONARIO DE CORRECCIONES (CASOS ESPECÍFICOS)
+    correcciones = {
+        # --- CASOS CRÍTICOS DE ESCRITURA ---
+        # Beruti
+        "BERUTI": "ANTONIO BERUTTI", "BERUTTI": "ANTONIO BERUTTI",
+        "A BERUTI": "ANTONIO BERUTTI", "A BERUTTI": "ANTONIO BERUTTI",
+        "A.BERUTTI": "ANTONIO BERUTTI", "ANTONIO BERUTI": "ANTONIO BERUTTI",
+        "BERUTI ANTONIO": "ANTONIO BERUTTI", "BERUTTI A.": "ANTONIO BERUTTI",
+        "ANTONIO BERUTTIIO": "ANTONIO BERUTTI",
+
+        # Cafferata
+        "CAFFERATA": "CAFFERATA", "CAFERATA": "CAFFERATA", "CAFERATTA": "CAFFERATA",
+        "CAFERRATA": "CAFFERATA", "A CAFFERATA": "CAFFERATA", "A CAFERATTA": "CAFFERATA",
+        "AGUSTIN CAFERATTA": "CAFFERATA", "ANGEL CAFERATA": "CAFFERATA",
+        "C A CAFERATA": "CAFFERATA",
+        
+        # Pellegrini
+        "PELLEGRINI": "CARLOS PELLEGRINI", "PELEGRINI": "CARLOS PELLEGRINI",
+        "C PELLEGRINI": "CARLOS PELLEGRINI", "C. PELLEGRINI": "CARLOS PELLEGRINI",
+        "CARLOS PELLEGRINI": "CARLOS PELLEGRINI", "PELLEGRINI CARLOS": "CARLOS PELLEGRINI",
+        "C PELEGRINI": "CARLOS PELLEGRINI",
+
+        # Yrigoyen
+        "YRIGOYEN": "HIPOLITO YRIGOYEN", "IRIGOYEN": "HIPOLITO YRIGOYEN",
+        "H YRIGOYEN": "HIPOLITO YRIGOYEN", "H.YRIGOYEN": "HIPOLITO YRIGOYEN",
+        "HIPOLITO YRIGOYEN": "HIPOLITO YRIGOYEN",
+
+        # --- FECHAS Y NÚMEROS ---
+        # 12 de Octubre
+        "12 DE OCTUBRE": "12 DE OCTUBRE", "12 OCTUBRE": "12 DE OCTUBRE",
+        "12 D OCTUBRE": "12 DE OCTUBRE", "DOCE DE OCTUBRE": "12 DE OCTUBRE",
+        
+        # 3 de Febrero
+        "3 DE FEBRERO": "3 DE FEBRERO", "TRES DE FEBRERO": "3 DE FEBRERO",
+        "T DE FEBRERO": "3 DE FEBRERO", "T.DE FEBRERO": "3 DE FEBRERO",
+        
+        # 1 de Mayo
+        "1 DE MAYO": "1 DE MAYO", "1RO DE MAYO": "1 DE MAYO",
+        "1RO.DE MAYO": "1 DE MAYO", "PRIMERO DE MAYO": "1 DE MAYO",
+
+        # --- EJES PRINCIPALES ---
+        # San Martín (Protegemos Boulevard vs Avenida)
+        "AV SAN MARTIN": "AV SAN MARTIN", "AV. SAN MARTIN": "AV SAN MARTIN", 
+        "GRAL SAN MARTIN": "AV SAN MARTIN", "AV GRAL SAN MARTIN": "AV SAN MARTIN",
+        "BOULEVARD SAN MARTIN": "BOULEVARD SAN MARTIN", "BV.SAN MARTIN": "BOULEVARD SAN MARTIN", 
+        "BV SAN MARTIN": "BOULEVARD SAN MARTIN", "BVARD SAN MARTIN": "BOULEVARD SAN MARTIN",
+        
+        # Otros Ejes
+        "AV MARQUEZ": "AV MARQUEZ", "MARQUEZ": "AV MARQUEZ", "BERNABE MARQUEZ": "AV MARQUEZ",
+        "M T DE ALVEAR": "MARCELO T DE ALVEAR", "ALVEAR": "MARCELO T DE ALVEAR",
+        "J J DE URQUIZA": "URQUIZA", "JUSTO JOSE DE URQUIZA": "URQUIZA", "URQUIZA": "URQUIZA",
+        "J M DE ROSAS": "JUAN MANUEL DE ROSAS", "ROSAS": "JUAN MANUEL DE ROSAS",
+        "AV PTE PERON": "AV PERON", "PTE PERON": "AV PERON",
+        
+        # Casos puntuales
+        "GLADIOLO": "DE LOS GLADIOLOS", "LOS GLADIOLOS": "DE LOS GLADIOLOS",
+        "E DE LOS ANDES": "EJERCITO DE LOS ANDES", "E.DE LOS ANDES": "EJERCITO DE LOS ANDES",
+        "RCA ARABE SIRIA": "REPUBLICA ARABE SIRIA", "ARABE SIRIA": "REPUBLICA ARABE SIRIA",
+        
+        # Errores de tipeo
+        "PAUSTEUR": "PASTEUR",
+        "LACAUTIVA": "LA CAUTIVA",
+        "ELISALDE": "PADRE ELIZALDE", "PADRE ELISALDE": "PADRE ELIZALDE",
+        "RICCHIERI": "TENIENTE GENERAL RICCHIERI", "TTE GRAL RICCHIERI": "TENIENTE GENERAL RICCHIERI"
+    }
+    
+    # Si encontramos la calle en el diccionario, devolvemos la corrección y TERMINAMOS
+    if calle in correcciones:
+        return correcciones[calle]
+    
+    # B. LIMPIEZA GENERAL (Si no estaba en el diccionario)
     palabras_basura = [
         "AV.", "AV ", "AVENIDA ", 
         "CALLE ", 
@@ -47,23 +119,28 @@ def normalizar_calle(texto_calle):
         "ALTE.", "ALTE ", "ALMIRANTE ",
         "MONS.", "MONS ", "MONSEÑOR ",
         "PBRO.", "PBRO ", "PRESBITERO ",
-        "INT.", "INT ", "INTENDENTE "
+        "INT.", "INT ", "INTENDENTE ",
+        "MAESTRA ", "MAESTRA. ",
+        "BV.", "BV ", "BVARD ", "BOULEVARD ",
+        # INICIALES (Para casos como C. TEJEDOR que no están en el diccionario)
+        "A. ", "A ", "C. ", "C ", "J. ", "J ", 
+        "H. ", "H ", "L. ", "L ", "M. ", "M ", 
+        "P. ", "P ", "S. ", "S "
     ]
     
+    nombre_limpio = calle
     for palabra in palabras_basura:
-        if calle.startswith(palabra):
-            calle = calle.replace(palabra, "")
+        if nombre_limpio.startswith(palabra):
+            nombre_limpio = nombre_limpio.replace(palabra, "")
             
-    return calle.strip()
+    return nombre_limpio.strip()
 
 # --- 3. FUNCIÓN DE EXTRACCIÓN ---
 def limpiar_direccion(texto):
     if not isinstance(texto, str):
         return None, None, None
     texto = texto.upper().strip()
-    
-    # Regex: Busca letras seguidas de números
-    match = re.search(r"^([A-Z\s\.\d]+?)\s+(\d+)", texto)
+    match = re.search(r"^([A-Z\s\.\d\(\)\-]+?)\s+(\d+)", texto)
     if match:
         calle_raw = match.group(1).strip()
         altura = int(match.group(2))
@@ -72,7 +149,7 @@ def limpiar_direccion(texto):
     return None, None, None
 
 # --- INICIO DE LA APP ---
-with st.spinner('Procesando datos con lógica flexible...'):
+with st.spinner('Procesando y unificando padrón...'):
     df = cargar_datos()
 
 if df is not None:
@@ -84,40 +161,45 @@ if df is not None:
             df['Calle_Original'] = datos_limpios[0]
             df['Altura_Limpia'] = datos_limpios[1]
             df['Calle_Norm'] = datos_limpios[2]
-            
             df = df.dropna(subset=['Calle_Norm', 'Altura_Limpia'])
 
-        st.success(f"✅ Base lista: {len(df)} afiliados.")
+        st.success(f"✅ Padrón Unificado: {len(df)} afiliados listos.")
+        
+        # BOTÓN DE DESCARGA
+        with st.expander("📥 DESCARGAR BASE UNIFICADA"):
+            st.write("Descarga el archivo con las calles corregidas (Berutti, Cafferata, Fechas, etc.).")
+            csv_export = df[['Apellido', 'Nombre', 'Matricula', 'Calle_Norm', 'Altura_Limpia', 'Domicilio']].to_csv(index=False).encode('utf-8')
+            st.download_button("⬇️ Descargar CSV Limpio", csv_export, "padron_limpio_t3f.csv", "text/csv")
+
         st.divider()
 
-        # --- SELECTOR DE MODO ---
-        modo_busqueda = st.radio("Modo:", ["👤 Buscar Persona", "🏠 Buscar Calle"], horizontal=True)
+        # SELECTOR
+        modo_busqueda = st.radio("Modo:", ["👤 Por Persona", "🏠 Por Calle"], horizontal=True)
         st.divider()
 
         # MODO 1: PERSONA
         if "Persona" in modo_busqueda:
             col1, col2 = st.columns([2, 1])
             with col1:
-                busqueda = st.text_input("🔍 Apellido o DNI:", placeholder="Ej: ERNANDES")
+                busqueda = st.text_input("🔍 Apellido o DNI:", placeholder="Ej: PEREZ")
 
             if busqueda:
                 filtro = df[df['Apellido'].str.contains(busqueda.upper(), na=False) | 
                            df['Matricula'].astype(str).str.contains(busqueda, na=False)]
                 
                 if not filtro.empty:
-                    # Selector
                     opciones = {f"{row['Apellido']} {row['Nombre']} - {row['Calle_Original']} {int(row['Altura_Limpia'])}": i for i, row in filtro.iterrows()}
-                    seleccion = st.selectbox("Resultados:", list(opciones.keys()))
+                    seleccion = st.selectbox("Afiliado:", list(opciones.keys()))
                     
                     if seleccion:
                         idx = opciones[seleccion]
                         objetivo = df.loc[idx]
                         
-                        st.info(f"📌 **CENTRO:** {objetivo['Apellido']} {objetivo['Nombre']} | {objetivo['Calle_Original']} {int(objetivo['Altura_Limpia'])}")
+                        st.info(f"📌 OBJETIVO: {objetivo['Apellido']} {objetivo['Nombre']} | Calle Normalizada: {objetivo['Calle_Norm']} {int(objetivo['Altura_Limpia'])}")
                         
-                        rango = st.slider("Radio (numeración):", 100, 1000, 500)
+                        rango = st.slider("Radio:", 100, 1000, 500)
                         
-                        # FILTRO POR CALLE NORMALIZADA
+                        # Buscamos coincidencias en la calle NORMALIZADA
                         vecinos = df[
                             (df['Calle_Norm'] == objetivo['Calle_Norm']) & 
                             (df['Altura_Limpia'] >= objetivo['Altura_Limpia'] - rango) &
@@ -128,7 +210,7 @@ if df is not None:
                         vecinos['Distancia'] = abs(vecinos['Altura_Limpia'] - objetivo['Altura_Limpia'])
                         vecinos = vecinos.sort_values('Distancia')
                         
-                        st.write(f"**Vecinos en la misma calle:** {len(vecinos)}")
+                        st.write(f"**Vecinos encontrados:** {len(vecinos)}")
                         st.dataframe(vecinos[['Apellido', 'Nombre', 'Domicilio', 'Distancia']], use_container_width=True)
                 else:
                     st.warning("No encontrado.")
@@ -137,15 +219,14 @@ if df is not None:
         else:
             col1, col2 = st.columns(2)
             with col1:
-                # Mostramos las calles ORIGINALES para elegir
-                calle_input = st.selectbox("Calle:", sorted(df['Calle_Original'].unique()))
+                # Mostramos la lista limpia de calles
+                lista_calles = sorted(df['Calle_Norm'].unique())
+                calle_input = st.selectbox("Selecciona Calle:", lista_calles)
             with col2:
-                altura_input = st.number_input("Altura (Opcional):", min_value=0, step=100)
+                altura_input = st.number_input("Altura (0 = todas):", min_value=0, step=100)
             
             if calle_input:
-                # Buscamos por la versión normalizada
-                calle_norm_seleccionada = df[df['Calle_Original'] == calle_input]['Calle_Norm'].iloc[0]
-                filtro_calle = df[df['Calle_Norm'] == calle_norm_seleccionada].copy()
+                filtro_calle = df[df['Calle_Norm'] == calle_input].copy()
                 
                 if altura_input > 0:
                     rango = st.slider("Radio:", 100, 1000, 500)
@@ -164,4 +245,4 @@ if df is not None:
     else:
         st.error("Error: Columna 'Domicilio' no encontrada.")
 else:
-    st.error("⚠️ Archivo no encontrado en GitHub.")
+    st.error("⚠️ Archivo no encontrado. Verifica que 'datos.csv' esté en GitHub.
